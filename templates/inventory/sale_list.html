@@ -1,0 +1,73 @@
+{% comment %}
+This file contains multiple templates. In production, split into separate files.
+Templates: sale_list.html, sale_detail.html, category_list.html, supplier_list.html, etc.
+Below is sale_list.html content:
+{% endcomment %}
+{% extends "base.html" %}
+{% block title %}Sales History{% endblock %}
+{% block page_title %}Sales History{% endblock %}
+
+{% block content %}
+<!-- Filter bar -->
+<form method="GET" class="d-flex gap-2 flex-wrap mb-3">
+  <input type="date" name="from" value="{{ request.GET.from }}"
+    class="form-control" style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text);max-width:160px">
+  <input type="date" name="to" value="{{ request.GET.to }}"
+    class="form-control" style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text);max-width:160px">
+  <button type="submit" class="btn-ss-primary btn">Filter</button>
+  <a href="{% url 'sale-list' %}" class="btn" style="background:rgba(239,68,68,.1);color:#f87171;border:none">Reset</a>
+  <span class="ms-auto align-self-center" style="font-size:.875rem;color:var(--ss-muted)">
+    Total Revenue: <strong style="color:#10b981;font-family:'DM Mono',monospace">PKR {{ total_revenue|floatformat:2 }}</strong>
+  </span>
+  <a href="{% url 'pos' %}" class="btn-ss-primary btn"><i class="bi bi-plus-circle me-1"></i>New Sale</a>
+</form>
+
+<div class="ss-card p-0">
+  <div class="table-responsive">
+    <table class="ss-table">
+      <thead>
+        <tr><th>Invoice #</th><th>Customer</th><th>Items</th><th>Total</th><th>Paid</th><th>Cashier</th><th>Status</th><th>Date</th></tr>
+      </thead>
+      <tbody>
+        {% for sale in sales %}
+        <tr>
+          <td>
+            <a href="{% url 'sale-detail' sale.pk %}"
+               style="color:var(--ss-accent);font-family:'DM Mono',monospace;font-size:.82rem">
+              {{ sale.invoice_number }}
+            </a>
+          </td>
+          <td style="font-size:.85rem">{{ sale.customer_name }}</td>
+          <td style="font-size:.8rem;color:var(--ss-muted)">{{ sale.items.count }}</td>
+          <td style="font-family:'DM Mono',monospace;font-size:.85rem">PKR {{ sale.total_amount|floatformat:2 }}</td>
+          <td style="font-family:'DM Mono',monospace;font-size:.85rem">PKR {{ sale.paid_amount|floatformat:2 }}</td>
+          <td style="font-size:.8rem">{{ sale.cashier.username|default:"—" }}</td>
+          <td>
+            <span class="badge rounded-pill {% if sale.status == 'completed' %}badge-ok{% elif sale.status == 'cancelled' %}badge-low{% else %}badge-warn{% endif %}">
+              {{ sale.status }}
+            </span>
+          </td>
+          <td style="font-size:.78rem;color:var(--ss-muted)">{{ sale.created_at|date:"M d Y, H:i" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center py-4" style="color:var(--ss-muted)">No sales found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if is_paginated %}
+<div class="d-flex justify-content-center mt-3 gap-1">
+  {% if page_obj.has_previous %}
+  <a href="?page={{ page_obj.previous_page_number }}" class="btn btn-sm" style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text)"><i class="bi bi-chevron-left"></i></a>
+  {% endif %}
+  <span class="btn btn-sm" style="background:rgba(0,212,255,.1);color:#00d4ff;border:none">
+    Page {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+  </span>
+  {% if page_obj.has_next %}
+  <a href="?page={{ page_obj.next_page_number }}" class="btn btn-sm" style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text)"><i class="bi bi-chevron-right"></i></a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

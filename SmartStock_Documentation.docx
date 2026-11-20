@@ -1,0 +1,84 @@
+SmartStock Inventory Management System
+=====================================
+
+## Project Overview
+SmartStock is an AI-powered inventory management system designed for retail and pharmacy businesses. It features user roles, product and supplier management, sales and purchase tracking, AI-driven demand forecasting, and an integrated AI assistant.
+
+---
+
+## Entity Relationship Diagram (ERD)
+
+![ERD Diagram](ERD.png)
+
+---
+
+## Entities and Relationships
+
+### 1. CustomUser
+- Fields: username, role (Admin/Manager/Cashier), phone, avatar
+- Relationships: Creates StockMovements, Sales, PurchaseOrders, ChatHistory
+
+### 2. Category
+- Fields: name, description, icon
+- Relationships: Has many Products
+
+### 3. Supplier
+- Fields: name, contact, address, email, city
+- Relationships: Supplies Products, Receives PurchaseOrders
+
+### 4. Product
+- Fields: name, barcode, description, tags, category, supplier, purchase_price, selling_price, unit, min_stock, reorder_point, current_stock, expiry_date, batch_number, embedding_json, last_reorder_qty, image
+- Relationships: Belongs to Category and Supplier, Has many StockMovements, SaleItems, PurchaseOrderItems, and one ForecastResult
+
+### 5. StockMovement
+- Fields: product, movement_type, quantity, balance_after, unit_price, notes, created_by, created_at, reference
+- Relationships: Linked to Product and User
+
+### 6. Sale
+- Fields: invoice_number, customer_name, customer_phone, total_amount, discount, paid_amount, status, cashier, notes, created_at
+- Relationships: Has many SaleItems, Linked to User
+
+### 7. SaleItem
+- Fields: sale, product, quantity, unit_price, total_price
+- Relationships: Linked to Sale and Product
+
+### 8. PurchaseOrder
+- Fields: po_number, supplier, status, total_amount, ordered_by, notes, expected_delivery, created_at, received_at
+- Relationships: Has many PurchaseOrderItems, Linked to Supplier and User
+
+### 9. PurchaseOrderItem
+- Fields: order, product, quantity_ordered, quantity_received, unit_cost, total_cost
+- Relationships: Linked to PurchaseOrder and Product
+
+### 10. ChatHistory
+- Fields: user, session_id, role, message, created_at
+- Relationships: Linked to User
+
+### 11. ForecastResult
+- Fields: product, forecast_dates_json, forecast_values_json, recommended_reorder, model_used, mae, generated_at
+- Relationships: Linked to Product
+
+---
+
+## Main Forms (Apply/Implementation)
+
+### User Registration Form
+- Fields: username, email, role, password1, password2
+
+### Product Form
+- Fields: name, generic_name, description, tags, barcode, category, supplier, purchase_price, selling_price, unit, min_stock, reorder_point, current_stock, expiry_date, batch_number, image
+
+### Category Form
+- Fields: name, description, icon
+
+### Supplier Form
+- Fields: name, contact, email, address, city
+
+### Stock Adjustment Form
+- Fields: movement_type, quantity, notes
+
+---
+
+## Notes
+- The ERD diagram is provided as ERD.png. For a visual ERD, use the included Mermaid diagram or generate a PNG using an online Mermaid renderer.
+- This document summarizes the database structure and main forms for implementation and reference.

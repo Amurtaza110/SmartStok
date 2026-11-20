@@ -1,0 +1,429 @@
+{% extends "base.html" %}
+{% block title %}AI Assistant{% endblock %}
+{% block page_title %}AI Assistant — SmartStock{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── CHAT LAYOUT ── */
+  .chat-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 1.25rem;
+    height: calc(100vh - 120px);
+  }
+  .chat-main {
+    display: flex; flex-direction: column;
+    background: var(--ss-surface);
+    border: 1px solid var(--ss-border);
+    border-radius: 16px; overflow: hidden;
+  }
+  .chat-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--ss-border);
+    display: flex; align-items: center; gap: .75rem;
+  }
+  .ai-avatar {
+    width: 42px; height: 42px; border-radius: 12px;
+    background: linear-gradient(135deg, #7c3aed, #00d4ff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; flex-shrink: 0;
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: {% if ollama_running %}#10b981{% else %}#ef4444{% endif %};
+    display: inline-block; margin-right: .4rem;
+    {% if ollama_running %}box-shadow: 0 0 6px #10b981;{% endif %}
+  }
+
+  /* ── MESSAGES ── */
+  .chat-messages {
+    flex: 1; overflow-y: auto;
+    padding: 1.25rem; display: flex; flex-direction: column; gap: .75rem;
+  }
+  .msg { display: flex; gap: .75rem; max-width: 85%; }
+  .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+  .msg.assistant { align-self: flex-start; }
+
+  .msg-avatar {
+    width: 32px; height: 32px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .85rem; flex-shrink: 0;
+  }
+  .msg.assistant .msg-avatar { background: linear-gradient(135deg, #7c3aed, #00d4ff); }
+  .msg.user .msg-avatar { background: rgba(0,212,255,.2); }
+
+  .msg-bubble {
+    border-radius: 14px; padding: .7rem 1rem; font-size: .875rem;
+    line-height: 1.6; max-width: 100%;
+  }
+  .msg.assistant .msg-bubble {
+    background: rgba(124,58,237,.12);
+    border: 1px solid rgba(124,58,237,.25);
+    color: var(--ss-text);
+    border-top-left-radius: 4px;
+  }
+  .msg.user .msg-bubble {
+    background: rgba(0,212,255,.12);
+    border: 1px solid rgba(0,212,255,.25);
+    color: var(--ss-text);
+    border-top-right-radius: 4px;
+  }
+  .msg-time {
+    font-size: .68rem; color: var(--ss-muted); margin-top: .3rem;
+    text-align: right;
+  }
+  .msg.assistant .msg-time { text-align: left; }
+
+  /* Typing indicator */
+  .typing-indicator { display: none; }
+  .typing-indicator.show { display: flex; }
+  .typing-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #7c3aed; margin: 0 2px;
+    animation: typing 1.2s ease-in-out infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: .2s; }
+  .typing-dot:nth-child(3) { animation-delay: .4s; }
+  @keyframes typing { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-8px); } }
+
+  /* ── INPUT BAR ── */
+  .chat-input-bar {
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--ss-border);
+    display: flex; gap: .75rem; align-items: flex-end;
+  }
+  .chat-input-bar textarea {
+    flex: 1; background: rgba(255,255,255,.05); border: 1px solid var(--ss-border);
+    color: var(--ss-text); border-radius: 12px; padding: .7rem 1rem;
+    font-size: .875rem; resize: none; font-family: inherit;
+    transition: border-color .15s;
+    min-height: 44px; max-height: 120px;
+  }
+  .chat-input-bar textarea:focus {
+    outline: none; border-color: rgba(0,212,255,.5);
+    background: rgba(0,212,255,.04);
+  }
+  .chat-input-bar textarea::placeholder { color: var(--ss-muted); }
+
+  .btn-send {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: linear-gradient(135deg, #7c3aed, #00d4ff);
+    border: none; color: #fff; font-size: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: opacity .15s; flex-shrink: 0;
+  }
+  .btn-send:hover { opacity: .85; }
+  .btn-send:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── SIDEBAR PANEL ── */
+  .chat-sidebar {
+    display: flex; flex-direction: column; gap: 1rem;
+    overflow-y: auto;
+  }
+  .sidebar-panel {
+    background: var(--ss-surface);
+    border: 1px solid var(--ss-border);
+    border-radius: 12px; padding: 1rem;
+  }
+  .sidebar-panel h6 {
+    font-family: 'Syne', sans-serif; font-size: .8rem;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--ss-muted); margin-bottom: .75rem;
+  }
+  .suggestion-chip {
+    display: block; width: 100%;
+    background: rgba(0,212,255,.06);
+    border: 1px solid rgba(0,212,255,.15);
+    color: #94a3b8; border-radius: 8px;
+    padding: .45rem .75rem; font-size: .8rem;
+    text-align: left; margin-bottom: .4rem;
+    cursor: pointer; transition: all .15s;
+  }
+  .suggestion-chip:hover {
+    background: rgba(0,212,255,.14);
+    color: var(--ss-accent); border-color: var(--ss-accent);
+  }
+
+  /* Markdown-style bold in messages */
+  .msg-bubble strong { color: var(--ss-accent); }
+  .msg-bubble code {
+    background: rgba(0,0,0,.3); padding: .1em .3em;
+    border-radius: 4px; font-family: 'DM Mono', monospace; font-size: .85em;
+  }
+
+  /* Ollama warning banner */
+  .ollama-warning {
+    background: rgba(245,158,11,.08);
+    border: 1px solid rgba(245,158,11,.3);
+    border-radius: 10px; padding: .75rem 1rem;
+    font-size: .82rem; color: #fbbf24;
+    margin: .5rem 1.25rem 0;
+  }
+
+  @media (max-width: 900px) {
+    .chat-wrapper { grid-template-columns: 1fr; }
+    .chat-sidebar { display: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="chat-wrapper">
+  <!-- ── MAIN CHAT ── -->
+  <div class="chat-main">
+    <!-- Header -->
+    <div class="chat-header">
+      <div class="ai-avatar"><i class="bi bi-robot"></i></div>
+      <div class="flex-grow-1">
+        <div class="fw-600" style="font-family:'Syne',sans-serif">SmartStock AI</div>
+        <div style="font-size:.75rem;color:var(--ss-muted)">
+          <span class="status-dot"></span>
+          {% if ollama_running %}
+            Online — {{ available_models|join:", "|default:"Ollama connected" }}
+          {% else %}
+            Offline — <a href="#setup" style="color:#f59e0b">Check AI service setup</a>
+          {% endif %}
+        </div>
+      </div>
+      <!-- Clear chat -->
+      <button id="btnClearChat" class="btn btn-sm" title="Clear chat"
+        style="background:rgba(239,68,68,.1);color:#f87171;border:none;border-radius:8px">
+        <i class="bi bi-trash3"></i>
+      </button>
+    </div>
+
+    {% if not ollama_running %}
+    <div class="ollama-warning" id="setup">
+      <i class="bi bi-exclamation-triangle me-2"></i>
+      <strong>{% if not ai_service_running %}AI service is unavailable.{% else %}Ollama is unavailable.{% endif %}</strong>
+      Start the configured AI service and verify its Ollama connection to enable chat.
+      <code style="display:block;margin-top:.4rem;font-size:.78rem;color:#fbbf24">
+        {% if not ai_service_running %}Check AI_SERVICE_URL and the AI service container.{% else %}Check OLLAMA_BASE_URL and the configured model.{% endif %}
+      </code>
+    </div>
+    {% endif %}
+
+    <!-- Messages -->
+    <div class="chat-messages" id="chatMessages">
+      <!-- Welcome message -->
+      <div class="msg assistant">
+        <div class="msg-avatar"><i class="bi bi-robot"></i></div>
+        <div>
+          <div class="msg-bubble">
+            👋 <strong>Hello, {{ user.username }}!</strong><br>
+            I'm your SmartStock AI assistant. I use current inventory and sales data to answer questions.
+            Ask about products, stock levels, expiry dates, or recorded sales.
+          </div>
+          <div class="msg-time">SmartStock AI</div>
+        </div>
+      </div>
+
+      <!-- Saved history -->
+      {% for msg in chat_history %}
+      <div class="msg {{ msg.role }}">
+        <div class="msg-avatar">
+          {% if msg.role == 'assistant' %}
+            <i class="bi bi-robot"></i>
+          {% else %}
+            {{ user.username|first|upper }}
+          {% endif %}
+        </div>
+        <div>
+          <div class="msg-bubble">{{ msg.message|linebreaksbr }}</div>
+          <div class="msg-time">{{ msg.created_at|date:"H:i" }}</div>
+        </div>
+      </div>
+      {% endfor %}
+
+      <!-- Typing indicator -->
+      <div class="msg assistant typing-indicator" id="typingIndicator">
+        <div class="msg-avatar"><i class="bi bi-robot"></i></div>
+        <div class="msg-bubble d-flex align-items-center gap-1" style="padding:.6rem .9rem">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input Bar -->
+    <div class="chat-input-bar">
+      <textarea id="msgInput" placeholder="Ask about stock, sales, predictions…"
+        rows="1" autocomplete="off"></textarea>
+      <button class="btn-send" id="btnSend">
+        <i class="bi bi-send-fill"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── SIDEBAR ── -->
+  <div class="chat-sidebar">
+    <!-- Live-data guidance -->
+    <div class="sidebar-panel">
+      <h6><i class="bi bi-lightbulb me-1"></i>What I can help with</h6>
+      <p class="mb-0" style="font-size:.8rem;color:var(--ss-muted)">
+        Ask a question about the live catalog, current stock, expiry dates, or completed sales.
+      </p>
+    </div>
+
+    <!-- AI Status -->
+    <div class="sidebar-panel">
+      <h6><i class="bi bi-cpu me-1"></i>AI Status</h6>
+      <div class="d-flex flex-column gap-2">
+        <div class="d-flex justify-content-between align-items-center" style="font-size:.8rem">
+          <span style="color:var(--ss-muted)">Ollama LLM</span>
+          <span class="badge {% if ollama_running %}badge-ok{% else %}badge-low{% endif %} rounded-pill">
+            {% if ollama_running %}Online{% else %}Offline{% endif %}
+          </span>
+        </div>
+        <div class="d-flex justify-content-between align-items-center" style="font-size:.8rem">
+          <span style="color:var(--ss-muted)">Model</span>
+          <span style="font-family:'DM Mono',monospace;font-size:.75rem;color:var(--ss-accent)">
+            {{ available_models.0|default:"Not available" }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="sidebar-panel">
+      <h6><i class="bi bi-grid me-1"></i>Quick Actions</h6>
+      <div class="d-flex flex-column gap-2">
+        <a href="{% url 'ai:semantic-search' %}" class="suggestion-chip">
+          <i class="bi bi-search-heart me-1"></i>Smart Search
+        </a>
+        <a href="{% url 'ai:forecast-dashboard' %}" class="suggestion-chip">
+          <i class="bi bi-graph-up-arrow me-1"></i>Forecasts
+        </a>
+        <a href="{% url 'product-list' %}?stock=low" class="suggestion-chip">
+          <i class="bi bi-exclamation-triangle me-1"></i>Low Stock
+        </a>
+        <a href="{% url 'pos' %}" class="suggestion-chip">
+          <i class="bi bi-cart3 me-1"></i>Point of Sale
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const SESSION_ID = "{{ session_id }}";
+const CHAT_API   = "{% url 'ai:chat-api' %}";
+const CLEAR_API  = "{% url 'ai:chat-clear' %}";
+const CSRF_TOKEN = "{{ csrf_token }}";
+
+const messagesEl   = document.getElementById('chatMessages');
+const inputEl      = document.getElementById('msgInput');
+const sendBtn      = document.getElementById('btnSend');
+const typingEl     = document.getElementById('typingIndicator');
+
+// Auto-resize textarea
+inputEl.addEventListener('input', () => {
+  inputEl.style.height = 'auto';
+  inputEl.style.height = inputEl.scrollHeight + 'px';
+});
+
+// Send on Enter (Shift+Enter = newline)
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+
+sendBtn.addEventListener('click', sendMessage);
+
+// Fill from suggestion chip
+function fillQuestion(el) {
+  inputEl.value = el.textContent.trim();
+  inputEl.focus();
+}
+
+// Clear chat
+document.getElementById('btnClearChat').addEventListener('click', async () => {
+  if (!confirm('Clear all chat history?')) return;
+  await fetch(CLEAR_API, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF_TOKEN },
+  });
+  location.reload();
+});
+
+// Scroll to bottom
+function scrollBottom() {
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+scrollBottom();
+
+// Add a message bubble to the chat
+function addMessage(role, text, time = null) {
+  const ts = time || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const isUser = role === 'user';
+
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+
+  const avatarContent = isUser
+    ? `{{ user.username|first|upper }}`
+    : `<i class="bi bi-robot"></i>`;
+
+  // Convert **bold** and `code` in responses
+  const formatted = text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\n/g, '<br>');
+
+  div.innerHTML = `
+    <div class="msg-avatar">${avatarContent}</div>
+    <div>
+      <div class="msg-bubble">${formatted}</div>
+      <div class="msg-time">${isUser ? 'You' : 'SmartStock AI'} · ${ts}</div>
+    </div>
+  `;
+
+  // Insert before typing indicator
+  messagesEl.insertBefore(div, typingEl);
+  scrollBottom();
+}
+
+// Main send function
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text) return;
+
+  addMessage('user', text);
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+  sendBtn.disabled = true;
+  typingEl.classList.add('show');
+  scrollBottom();
+
+  try {
+    const res = await fetch(CHAT_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': CSRF_TOKEN,
+      },
+      body: JSON.stringify({ message: text, session_id: SESSION_ID }),
+    });
+
+    const data = await res.json();
+    typingEl.classList.remove('show');
+
+    if (data.success) {
+      addMessage('assistant', data.response);
+    } else {
+      addMessage('assistant', data.error || '⚠️ An error occurred. Please try again.');
+    }
+
+  } catch (err) {
+    typingEl.classList.remove('show');
+    addMessage('assistant', '❌ Network error. Please check your connection.');
+  }
+
+  sendBtn.disabled = false;
+  inputEl.focus();
+  scrollBottom();
+}
+</script>
+{% endblock %}

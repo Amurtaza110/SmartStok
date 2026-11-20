@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Demand Forecasting{% endblock %}
+{% block page_title %}AI Demand Forecasting{% endblock %}
+
+{% block extra_head %}
+<style>
+  .forecast-banner {
+    background: linear-gradient(135deg, rgba(16,185,129,.1), rgba(0,212,255,.06));
+    border: 1px solid rgba(16,185,129,.25);
+    border-radius: 14px; padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+    display: flex; align-items: center; gap: 1.25rem;
+  }
+  .forecast-icon-big {
+    width: 56px; height: 56px; border-radius: 14px;
+    background: rgba(16,185,129,.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; color: #10b981; flex-shrink: 0;
+  }
+  .forecast-card {
+    background: var(--ss-surface);
+    border: 1px solid var(--ss-border);
+    border-radius: 12px; padding: 1rem;
+    transition: border-color .15s, transform .15s;
+  }
+  .forecast-card:hover {
+    border-color: rgba(16,185,129,.35);
+    transform: translateY(-2px);
+  }
+  .reorder-badge {
+    background: linear-gradient(135deg, rgba(16,185,129,.2), rgba(0,212,255,.15));
+    border: 1px solid rgba(16,185,129,.3);
+    color: #34d399; border-radius: 8px;
+    padding: .25rem .75rem; font-family: 'DM Mono', monospace;
+    font-size: .85rem; font-weight: 500;
+  }
+  .model-chip {
+    background: rgba(124,58,237,.15);
+    color: #a78bfa; border-radius: 20px;
+    padding: .15rem .6rem; font-size: .7rem;
+  }
+  .mae-good   { color: #34d399; }
+  .mae-medium { color: #fbbf24; }
+  .mae-poor   { color: #f87171; }
+  .mini-sparkline { height: 40px; }
+  .run-all-btn {
+    background: linear-gradient(135deg, #10b981, #00d4ff);
+    border: none; color: #0a0f1e; font-weight: 700;
+    border-radius: 10px; padding: .6rem 1.5rem;
+    cursor: pointer; font-size: .875rem;
+    transition: opacity .15s;
+  }
+  .run-all-btn:hover { opacity: .85; }
+  .run-all-btn:disabled { opacity: .4; cursor: not-allowed; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Banner -->
+<div class="forecast-banner">
+  <div class="forecast-icon-big"><i class="bi bi-graph-up-arrow"></i></div>
+  <div class="flex-grow-1">
+    <h5 class="mb-1" style="font-family:'Syne',sans-serif;font-weight:700">
+      30-Day Demand Forecasting
+    </h5>
+    <p class="mb-0" style="color:var(--ss-muted);font-size:.875rem">
+      Forecasts use each product's recorded recent sales. Recommendations include a 20% buffer;
+      products without sales history are skipped.
+    </p>
+  </div>
+  <div class="d-flex flex-column gap-2 text-end">
+    <button class="run-all-btn" id="btnRunAll" onclick="runAllForecasts()">
+      <i class="bi bi-lightning-charge me-1"></i>Run All Forecasts
+    </button>
+    {% if unforecasted > 0 %}
+    <small style="color:#fbbf24;font-size:.75rem">
+      <i class="bi bi-exclamation-circle me-1"></i>{{ unforecasted }} products not yet forecasted
+    </small>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Forecast Cards Grid -->
+{% if forecasts %}
+<div class="row g-3" id="forecastGrid">
+  {% for f in forecasts %}
+  <div class="col-md-6 col-xl-4">
+    <div class="forecast-card">
+      <!-- Header -->
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div>
+          <a href="{% url 'product-detail' f.product.pk %}"
+             style="color:var(--ss-text);text-decoration:none;font-weight:600;font-size:.9rem">
+            {{ f.product.name }}
+          </a>
+          {% if f.product.category %}
+          <div style="font-size:.72rem;color:var(--ss-muted)">{{ f.product.category.name }}</div>
+          {% endif %}
+        </div>
+        <div class="reorder-badge">
+          ↑ {{ f.recommended_reorder }} {{ f.product.unit }}
+        </div>
+      </div>
+
+      <!-- Mini chart placeholder — filled by JS -->
+      <canvas class="mini-sparkline" id="spark-{{ f.product.pk }}"
+              data-dates='{{ f.forecast_dates_json }}'
+              data-values='{{ f.forecast_values_json }}'></canvas>
+
+      <!-- Stats row -->
+      <div class="d-flex justify-content-between align-items-center mt-2">
+        <div class="d-flex gap-2">
+          <span class="model-chip">{{ f.model_used|truncatechars:20 }}</span>
+          {% if f.mae %}
+          <span class="model-chip
+            {% if f.mae < 3 %}mae-good{% elif f.mae < 8 %}mae-medium{% else %}mae-poor{% endif %}">
+            MAE {{ f.mae|floatformat:1 }}
+          </span>
+          {% endif %}
+        </div>
+        <div class="d-flex gap-2 align-items-center" style="font-size:.75rem;color:var(--ss-muted)">
+          <span>Stock: {{ f.product.current_stock }}</span>
+          <button class="btn btn-sm" style="font-size:.7rem;background:rgba(0,212,255,.1);color:#00d4ff;border:none;padding:.2rem .5rem"
+                  onclick="refreshForecast({{ f.product.pk }}, this)">
+            <i class="bi bi-arrow-clockwise"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Updated time -->
+      <div style="font-size:.68rem;color:var(--ss-muted);margin-top:.4rem">
+        Updated: {{ f.generated_at|date:"M d, H:i" }}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% elif forecast_error %}
+<div class="alert alert-danger" role="alert">
+  Could not load forecasts: {{ forecast_error }}
+</div>
+<div class="text-center py-5">
+  <i class="bi bi-exclamation-circle fs-1 d-block mb-3" style="color:#f87171"></i>
+  <h5 style="font-family:'Syne',sans-serif">Forecast service unavailable</h5>
+  <p style="color:var(--ss-muted);font-size:.875rem;max-width:420px;margin:.5rem auto 1.5rem">
+    Forecasts could not be loaded. Try again when the AI service is available.
+  </p>
+  <button class="run-all-btn" id="btnRunAll" onclick="runAllForecasts()">
+    <i class="bi bi-lightning-charge me-1"></i>Retry
+  </button>
+</div>
+{% else %}
+<!-- Empty state -->
+<div class="text-center py-5">
+  <i class="bi bi-graph-up-arrow fs-1 d-block mb-3" style="color:rgba(16,185,129,.3)"></i>
+  <h5 style="font-family:'Syne',sans-serif">No Forecasts Generated Yet</h5>
+  <p style="color:var(--ss-muted);font-size:.875rem;max-width:420px;margin:.5rem auto 1.5rem">
+    Click <strong>Run All Forecasts</strong> to generate demand predictions for all products.
+    Forecasts are generated only for products with completed sales history.
+  </p>
+  <button class="run-all-btn" onclick="runAllForecasts()">
+    <i class="bi bi-lightning-charge me-1"></i>Generate Forecasts Now
+  </button>
+</div>
+{% endif %}
+
+<!-- Progress Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="forecastToast" class="toast" role="alert" data-bs-autohide="false">
+    <div class="toast-header" style="background:var(--ss-surface);border-color:var(--ss-border)">
+      <i class="bi bi-cpu me-2" style="color:#10b981"></i>
+      <strong class="me-auto">Forecasting Engine</strong>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+    </div>
+    <div class="toast-body" id="toastBody">Running forecasts…</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const forecastCsrfToken = "{{ csrf_token }}";
+
+// Draw mini sparklines for each forecast card
+document.querySelectorAll('.mini-sparkline').forEach(canvas => {
+  const dates  = JSON.parse(canvas.dataset.dates  || '[]');
+  const values = JSON.parse(canvas.dataset.values || '[]');
+  if (!values.length) return;
+
+  // Show only first 30 values
+  const slicedDates  = dates.slice(0, 30);
+  const slicedValues = values.slice(0, 30);
+
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: slicedDates,
+      datasets: [{
+        data: slicedValues,
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16,185,129,.08)',
+        borderWidth: 1.5,
+        tension: 0.4,
+        fill: true,
+        pointRadius: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: { display: false, beginAtZero: true }
+      },
+      animation: { duration: 600 }
+    }
+  });
+});
+
+// Refresh single product forecast
+async function refreshForecast(productId, btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+  try {
+    const url = "{% url 'ai:forecast' 0 %}".replace('/0/', `/${productId}/`);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': forecastCsrfToken },
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      location.reload();
+    } else {
+      alert('Forecast failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Network error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>';
+  }
+}
+
+async function runAllForecasts() {
+  const btn = document.getElementById('btnRunAll');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Running…';
+
+  const toast = new bootstrap.Toast(document.getElementById('forecastToast'));
+  document.getElementById('toastBody').textContent = 'Generating forecasts for all products…';
+  toast.show();
+
+  try {
+    const res = await fetch("{% url 'ai:run-forecasts' %}", {
+      method: 'POST',
+      headers: { 'X-CSRFToken': forecastCsrfToken },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'Forecast request failed');
+    document.getElementById('toastBody').textContent =
+      `Generated ${data.generated} forecasts; skipped ${data.skipped} without sales data.`;
+    setTimeout(() => location.reload(), 1200);
+  } catch (e) {
+    document.getElementById('toastBody').textContent = 'Error: ' + e.message;
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-lightning-charge me-1"></i>Run All Forecasts';
+  } finally {
+    if (btn.isConnected && !document.getElementById('toastBody').textContent.startsWith('Error:')) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-lightning-charge me-1"></i>Run All Forecasts';
+    }
+  }
+}
+</script>
+{% endblock %}

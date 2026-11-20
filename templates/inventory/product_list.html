@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Products{% endblock %}
+{% block page_title %}Products{% endblock %}
+
+{% block content %}
+<!-- Toolbar -->
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+  <!-- Search form -->
+  <form method="GET" class="d-flex gap-2 flex-grow-1">
+    <div class="input-group" style="max-width:360px">
+      <input type="text" name="q" class="form-control"
+        style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text)"
+        placeholder="Search name / barcode…" value="{{ q }}">
+      <button class="btn" style="background:var(--ss-accent);color:#0a0f1e">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+
+    <select name="category" class="form-select"
+      style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text);max-width:160px">
+      <option value="">All Categories</option>
+      {% for cat in categories %}
+      <option value="{{ cat.id }}" {% if selected_category == cat.id|stringformat:'s' %}selected{% endif %}>
+        {{ cat.name }}
+      </option>
+      {% endfor %}
+    </select>
+
+    <select name="stock" class="form-select"
+      style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text);max-width:150px">
+      <option value="">All Stock</option>
+      <option value="low" {% if stock_filter == 'low' %}selected{% endif %}>Low Stock</option>
+      <option value="out" {% if stock_filter == 'out' %}selected{% endif %}>Out of Stock</option>
+      <option value="expiring" {% if stock_filter == 'expiring' %}selected{% endif %}>Expiring Soon</option>
+    </select>
+
+    <button type="submit" class="btn" style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-muted)">
+      Filter
+    </button>
+    {% if q or selected_category or stock_filter %}
+    <a href="{% url 'product-list' %}" class="btn" style="background:rgba(239,68,68,.1);color:#f87171;border:none">
+      <i class="bi bi-x-circle"></i>
+    </a>
+    {% endif %}
+  </form>
+
+  <div class="d-flex gap-2 ms-auto">
+    <a href="{% url 'ai:semantic-search' %}" class="btn btn-sm"
+       style="background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3)">
+      <i class="bi bi-search-heart me-1"></i>AI Search
+    </a>
+    {% if user.is_manager %}
+    <a href="{% url 'product-create' %}" class="btn-ss-primary btn">
+      <i class="bi bi-plus-circle me-1"></i>Add Product
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Product Table -->
+<div class="ss-card p-0">
+  <div class="table-responsive">
+    <table class="ss-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Category</th>
+          <th>Barcode</th>
+          <th>Stock</th>
+          <th>Selling Price</th>
+          <th>Expiry</th>
+          <th>AI Reorder</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in products %}
+        <tr>
+          <td>
+            <a href="{% url 'product-detail' product.pk %}"
+               style="color:var(--ss-text);text-decoration:none;font-weight:500">
+              {{ product.name }}
+            </a>
+            {% if product.generic_name %}
+            <div style="font-size:.72rem;color:var(--ss-muted)">{{ product.generic_name }}</div>
+            {% endif %}
+          </td>
+          <td style="font-size:.82rem">{{ product.category.name|default:"—" }}</td>
+          <td style="font-family:'DM Mono',monospace;font-size:.78rem;color:var(--ss-muted)">
+            {{ product.barcode }}
+          </td>
+          <td>
+            <span class="badge rounded-pill
+              {% if product.current_stock == 0 %}badge-low
+              {% elif product.is_low_stock %}badge-warn
+              {% else %}badge-ok{% endif %}">
+              {{ product.current_stock }} {{ product.unit }}
+            </span>
+          </td>
+          <td style="font-family:'DM Mono',monospace;font-size:.85rem">
+            PKR {{ product.selling_price }}
+          </td>
+          <td style="font-size:.8rem">
+            {% if product.is_expired %}
+              <span style="color:#f87171"><i class="bi bi-x-circle me-1"></i>Expired</span>
+            {% elif product.is_expiring_soon %}
+              <span style="color:#fbbf24"><i class="bi bi-exclamation-circle me-1"></i>{{ product.expiry_date }}</span>
+            {% elif product.expiry_date %}
+              <span style="color:var(--ss-muted)">{{ product.expiry_date }}</span>
+            {% else %}
+              <span style="color:var(--ss-muted)">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if product.last_reorder_qty > 0 %}
+            <span style="color:#10b981;font-family:'DM Mono',monospace;font-size:.8rem">
+              <i class="bi bi-robot me-1"></i>{{ product.last_reorder_qty }}
+            </span>
+            {% else %}
+            <span style="color:var(--ss-muted);font-size:.75rem">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="d-flex gap-1">
+              <a href="{% url 'product-detail' product.pk %}" class="btn btn-sm"
+                 style="background:rgba(0,212,255,.1);color:#00d4ff;border:none;padding:.2rem .5rem">
+                <i class="bi bi-eye"></i>
+              </a>
+              {% if user.is_manager %}
+              <a href="{% url 'stock-adjust' product.pk %}" class="btn btn-sm"
+                 style="background:rgba(16,185,129,.1);color:#10b981;border:none;padding:.2rem .5rem">
+                <i class="bi bi-plus-slash-minus"></i>
+              </a>
+              <a href="{% url 'product-update' product.pk %}" class="btn btn-sm"
+                 style="background:rgba(245,158,11,.1);color:#f59e0b;border:none;padding:.2rem .5rem">
+                <i class="bi bi-pencil"></i>
+              </a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="8" class="text-center py-4" style="color:var(--ss-muted)">
+            <i class="bi bi-box-seam d-block fs-2 mb-2"></i>
+            No products found.
+            {% if user.is_manager %}
+            <a href="{% url 'product-create' %}" style="color:var(--ss-accent)">Add your first product</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Pagination -->
+{% if is_paginated %}
+<div class="d-flex justify-content-center mt-3 gap-1">
+  {% if page_obj.has_previous %}
+  <a href="?page={{ page_obj.previous_page_number }}&q={{ q }}" class="btn btn-sm"
+     style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text)">
+    <i class="bi bi-chevron-left"></i>
+  </a>
+  {% endif %}
+
+  <span class="btn btn-sm" style="background:rgba(0,212,255,.1);color:#00d4ff;border:none">
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+  </span>
+
+  {% if page_obj.has_next %}
+  <a href="?page={{ page_obj.next_page_number }}&q={{ q }}" class="btn btn-sm"
+     style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text)">
+    <i class="bi bi-chevron-right"></i>
+  </a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

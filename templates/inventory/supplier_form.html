@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}{% if object %}Edit{% else %}Add{% endif %} Supplier{% endblock %}
+{% block page_title %}{% if object %}Edit{% else %}New{% endif %} Supplier{% endblock %}
+
+{% block content %}
+<div style="max-width:560px">
+  <a href="{% url 'supplier-list' %}" style="color:var(--ss-muted);font-size:.875rem">
+    <i class="bi bi-arrow-left me-1"></i>Back to Suppliers
+  </a>
+  <div class="ss-card mt-3">
+    {% crispy form %}
+  </div>
+</div>
+{% endblock %}

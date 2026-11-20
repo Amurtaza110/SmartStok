@@ -1,0 +1,27 @@
+# ============================================================
+# SmartStock - AI Powered Inventory Management System
+# Requirements File
+# ============================================================
+
+# Core Django
+Django==5.0.6
+psycopg2-binary==2.9.9        # PostgreSQL adapter
+mysqlclient==2.2.4             # MySQL adapter (optional, use one)
+Pillow==10.3.0                 # Image handling
+python-decouple==3.8           # Environment variables (.env)
+whitenoise==6.7.0              # Static files serving
+
+# Django Extensions
+django-crispy-forms==2.1
+crispy-bootstrap5==0.7
+
+# Service HTTP client
+requests==2.32.3
+httpx==0.27.0                  # Async HTTP (optional)
+gunicorn==23.0.0               # Production WSGI server for the inventory service
+
+# Utilities
+tabulate==0.9.0
+python-dateutil==2.9.0
+openpyxl==3.1.4                # Excel export
+reportlab==4.2.0               # PDF export

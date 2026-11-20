@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block page_title %}Categories{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <span style="color:var(--ss-muted)">{{ categories.count }} categories</span>
+  {% if user.is_manager %}
+  <a href="{% url 'category-create' %}" class="btn-ss-primary btn">
+    <i class="bi bi-plus-circle me-1"></i>Add Category
+  </a>
+  {% endif %}
+</div>
+
+<div class="row g-3">
+  {% for cat in categories %}
+  <div class="col-md-4 col-lg-3">
+    <div class="ss-card text-center">
+      <i class="{{ cat.icon }} fs-2 mb-2" style="color:var(--ss-accent)"></i>
+      <div style="font-family:'Syne',sans-serif;font-weight:600">{{ cat.name }}</div>
+      <div style="font-size:.8rem;color:var(--ss-muted);margin:.3rem 0">
+        {{ cat.product_count }} products
+      </div>
+      {% if cat.description %}
+      <div style="font-size:.78rem;color:var(--ss-muted)">{{ cat.description|truncatechars:60 }}</div>
+      {% endif %}
+      {% if user.is_manager %}
+      <a href="{% url 'category-update' cat.pk %}" class="btn btn-sm mt-2"
+         style="background:rgba(245,158,11,.1);color:#f59e0b;border:none;font-size:.75rem">
+        <i class="bi bi-pencil me-1"></i>Edit
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% empty %}
+  <div class="col-12 text-center py-5" style="color:var(--ss-muted)">
+    <i class="bi bi-tags fs-1 d-block mb-2"></i>
+    No categories yet.
+    {% if user.is_manager %}<a href="{% url 'category-create' %}" style="color:var(--ss-accent)">Add one</a>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

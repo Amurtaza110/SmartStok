@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Adjust Stock — {{ product.name }}{% endblock %}
+{% block page_title %}Stock Adjustment{% endblock %}
+
+{% block content %}
+<div style="max-width:520px">
+  <div class="mb-3">
+    <a href="{% url 'product-detail' product.pk %}" style="color:var(--ss-muted);font-size:.875rem">
+      <i class="bi bi-arrow-left me-1"></i>Back to {{ product.name }}
+    </a>
+  </div>
+
+  <!-- Current stock badge -->
+  <div class="ss-card mb-3">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <div style="font-family:'Syne',sans-serif;font-weight:700">{{ product.name }}</div>
+        <div style="font-size:.8rem;color:var(--ss-muted)">{{ product.category.name|default:"—" }}</div>
+      </div>
+      <div class="text-end">
+        <div style="font-family:'DM Mono',monospace;font-size:1.5rem;font-weight:700;
+                    color:{% if product.is_low_stock %}#f59e0b{% else %}#10b981{% endif %}">
+          {{ product.current_stock }}
+        </div>
+        <div style="font-size:.75rem;color:var(--ss-muted)">Current Stock ({{ product.unit }})</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ss-card">
+    <h6 class="mb-3" style="font-family:'Syne',sans-serif">
+      <i class="bi bi-plus-slash-minus me-2 text-info"></i>Adjust Stock
+    </h6>
+    <form method="post">
+      {% csrf_token %}
+      {% crispy form %}
+    </form>
+  </div>
+</div>
+{% endblock %}

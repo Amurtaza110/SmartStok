@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% block title %}Smart Search{% endblock %}
+{% block page_title %}Smart Semantic Search{% endblock %}
+
+{% block extra_head %}
+<style>
+  .search-hero {
+    background: linear-gradient(135deg, rgba(124,58,237,.12), rgba(0,212,255,.08));
+    border: 1px solid var(--ss-border);
+    border-radius: 16px; padding: 2rem;
+    text-align: center; margin-bottom: 1.5rem;
+  }
+  .search-bar-wrap {
+    max-width: 640px; margin: 0 auto;
+    position: relative;
+  }
+  .search-bar-wrap input {
+    width: 100%; padding: .9rem 3.5rem .9rem 1.25rem;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(0,212,255,.3);
+    border-radius: 12px; color: var(--ss-text);
+    font-size: 1rem; font-family: inherit;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .search-bar-wrap input:focus {
+    outline: none;
+    border-color: var(--ss-accent);
+    box-shadow: 0 0 0 3px rgba(0,212,255,.15);
+  }
+  .search-bar-wrap button {
+    position: absolute; right: .5rem; top: 50%;
+    transform: translateY(-50%);
+    background: var(--ss-accent); border: none;
+    color: #0a0f1e; border-radius: 8px;
+    padding: .4rem .8rem; cursor: pointer;
+  }
+  .example-queries {
+    display: flex; flex-wrap: wrap; gap: .5rem;
+    justify-content: center; margin-top: 1rem;
+  }
+  .example-chip {
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--ss-border);
+    color: var(--ss-muted); border-radius: 20px;
+    padding: .25rem .8rem; font-size: .78rem;
+    cursor: pointer; transition: all .15s;
+  }
+  .example-chip:hover {
+    background: rgba(0,212,255,.1);
+    border-color: var(--ss-accent);
+    color: var(--ss-accent);
+  }
+
+  /* Result cards */
+  .result-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .result-card {
+    background: var(--ss-surface);
+    border: 1px solid var(--ss-border);
+    border-radius: 12px; padding: 1rem;
+    text-decoration: none; color: var(--ss-text);
+    transition: border-color .15s, transform .15s;
+    display: block;
+  }
+  .result-card:hover {
+    border-color: rgba(0,212,255,.4);
+    transform: translateY(-2px);
+    color: var(--ss-text);
+  }
+  .similarity-bar {
+    height: 3px; border-radius: 2px;
+    background: var(--ss-border); margin-top: .75rem;
+    overflow: hidden;
+  }
+  .similarity-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7c3aed, #00d4ff);
+    transition: width .5s ease;
+  }
+  .score-label {
+    font-size: .7rem; color: var(--ss-muted);
+    display: flex; justify-content: space-between;
+    margin-top: .25rem;
+  }
+
+  .no-results {
+    text-align: center; padding: 4rem 2rem;
+    color: var(--ss-muted);
+  }
+
+  /* Reindex button */
+  .reindex-btn {
+    font-size: .75rem;
+    background: rgba(124,58,237,.15);
+    color: #a78bfa; border: 1px solid rgba(124,58,237,.3);
+    border-radius: 8px; padding: .35rem .85rem; cursor: pointer;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero search -->
+<div class="search-hero">
+  <div class="mb-1">
+    <span style="background:linear-gradient(135deg,#7c3aed,#00d4ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800">
+      Smart Semantic Search
+    </span>
+  </div>
+  <p style="color:var(--ss-muted);font-size:.875rem;margin-bottom:1.25rem">
+    Search by meaning, not just keywords. Try <em>"fever medicine"</em> or <em>"pain relief tablet"</em>.
+  </p>
+
+  <form class="search-bar-wrap" id="searchForm" method="GET" action="">
+    <input type="text" name="q" id="searchInput"
+      value="{{ query }}"
+      placeholder="e.g. fever medicine, vitamin supplement, pain killer…"
+      autofocus autocomplete="off">
+    <button type="submit"><i class="bi bi-search"></i></button>
+  </form>
+
+  <div class="example-queries mt-3">
+    <span class="example-chip" onclick="doSearch('fever medicine')">fever medicine</span>
+    <span class="example-chip" onclick="doSearch('pain relief tablet')">pain relief tablet</span>
+    <span class="example-chip" onclick="doSearch('vitamin supplement')">vitamin supplement</span>
+    <span class="example-chip" onclick="doSearch('antibiotic capsule')">antibiotic capsule</span>
+    <span class="example-chip" onclick="doSearch('blood pressure')">blood pressure</span>
+    <span class="example-chip" onclick="doSearch('skin care lotion')">skin care lotion</span>
+    <span class="example-chip" onclick="doSearch('cough syrup')">cough syrup</span>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    {% if results %}
+    <span style="color:var(--ss-muted);font-size:.875rem">
+      Found <strong style="color:var(--ss-text)">{{ results|length }}</strong> results
+      {% if query %}for <em style="color:var(--ss-accent)">"{{ query }}"</em>{% endif %}
+    </span>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    <span style="font-size:.75rem;color:var(--ss-muted)">
+      <i class="bi bi-info-circle me-1"></i>Embeddings use sentence-transformers (offline)
+    </span>
+    {% if user.is_manager %}
+    <button class="reindex-btn" onclick="reindexProducts()">
+      <i class="bi bi-arrow-clockwise me-1"></i>Re-index Products
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Results -->
+{% if query %}
+  {% if results %}
+  <div class="result-grid" id="resultGrid">
+    {% for product in results %}
+    <a href="{% url 'product-detail' product.pk %}" class="result-card">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div>
+          <div style="font-weight:600;font-size:.9rem">{{ product.name }}</div>
+          {% if product.generic_name %}
+          <div style="font-size:.75rem;color:var(--ss-muted)">{{ product.generic_name }}</div>
+          {% endif %}
+        </div>
+        {% if product.is_low_stock %}
+        <span class="badge badge-low rounded-pill" style="font-size:.65rem">Low</span>
+        {% else %}
+        <span class="badge badge-ok rounded-pill" style="font-size:.65rem">OK</span>
+        {% endif %}
+      </div>
+
+      <div class="d-flex justify-content-between" style="font-size:.8rem;color:var(--ss-muted)">
+        <span>
+          {% if product.category %}
+          <i class="bi bi-tag me-1"></i>{{ product.category.name }}
+          {% endif %}
+        </span>
+        <span>Stock: {{ product.current_stock }}</span>
+      </div>
+
+      <div class="d-flex justify-content-between mt-2" style="font-size:.85rem">
+        <span style="font-family:'DM Mono',monospace;color:var(--ss-accent)">
+          PKR {{ product.selling_price }}
+        </span>
+        {% if product.similarity_score %}
+        <span style="font-size:.72rem;color:var(--ss-muted)">{{ product.similarity_score }}% match</span>
+        {% endif %}
+      </div>
+
+      {% if product.similarity_score %}
+      <div class="similarity-bar">
+        <div class="similarity-fill" style="width:{{ product.similarity_score }}%"></div>
+      </div>
+      <div class="score-label">
+        <span>Relevance</span>
+        <span>{{ product.similarity_score }}%</span>
+      </div>
+      {% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="no-results">
+    <i class="bi bi-search fs-1 mb-3 d-block" style="color:var(--ss-border)"></i>
+    <h5 style="font-family:'Syne',sans-serif">No results found</h5>
+    <p style="font-size:.875rem">
+      Try different keywords or check if products have been indexed.
+      <br>
+      {% if user.is_manager %}
+      <button class="reindex-btn mt-2" onclick="reindexProducts()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Index Products Now
+      </button>
+      {% endif %}
+    </p>
+  </div>
+  {% endif %}
+{% else %}
+<!-- Empty state (no query) -->
+<div class="no-results">
+  <i class="bi bi-search-heart fs-1 mb-3 d-block" style="color:rgba(124,58,237,.4)"></i>
+  <h5 style="font-family:'Syne',sans-serif">AI-Powered Search</h5>
+  <p style="font-size:.875rem;max-width:480px;margin:0 auto">
+    Type a natural language query above. The AI understands meaning,
+    Search by product name, generic name, purpose, or category.
+  </p>
+</div>
+{% endif %}
+
+<!-- Reindex toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="reindexToast" class="toast align-items-center" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="toastMsg">Indexing products…</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function doSearch(q) {
+  document.getElementById('searchInput').value = q;
+  document.getElementById('searchForm').submit();
+}
+
+async function reindexProducts() {
+  const toast = new bootstrap.Toast(document.getElementById('reindexToast'));
+  document.getElementById('toastMsg').textContent = 'Indexing products…';
+  toast.show();
+
+  try {
+    const res = await fetch("{% url 'ai:reindex' %}", {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+    });
+    const data = await res.json();
+    document.getElementById('toastMsg').textContent =
+      data.success ? `✅ ${data.message}` : `❌ ${data.error}`;
+  } catch (e) {
+    document.getElementById('toastMsg').textContent = '❌ Error: ' + e.message;
+  }
+}
+</script>
+{% endblock %}

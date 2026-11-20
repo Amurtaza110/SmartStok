@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Register — SmartStock{% endblock %}
+
+{% block content %}
+<div style="width:100%;max-width:440px;margin:auto;padding:1rem">
+  <div class="text-center mb-4">
+    <div style="font-family:'Syne',sans-serif;font-size:2rem;font-weight:800;color:#00d4ff">
+      <i class="bi bi-boxes me-2"></i>SmartStock
+    </div>
+    <div style="font-size:.75rem;color:var(--ss-muted);letter-spacing:2px;text-transform:uppercase">
+      Create Account
+    </div>
+  </div>
+  <div class="ss-card">
+    <h5 class="mb-4" style="font-family:'Syne',sans-serif;font-weight:700">Register</h5>
+    <form method="post">
+      {% csrf_token %}
+      {% crispy form %}
+    </form>
+    <div class="text-center mt-3" style="font-size:.82rem;color:var(--ss-muted)">
+      Already have an account? <a href="{% url 'login' %}" style="color:var(--ss-accent)">Sign In</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

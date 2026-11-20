@@ -1,0 +1,74 @@
+This is a placeholder for the ERD diagram image. To generate the ERD.png, use the following Mermaid code in an online Mermaid live editor or a diagram tool that supports Mermaid:
+
+```
+erDiagram
+    CustomUser ||--o{ StockMovement : creates
+    CustomUser ||--o{ Sale : cashier
+    CustomUser ||--o{ PurchaseOrder : orders
+    CustomUser ||--o{ ChatHistory : has
+    Category ||--o{ Product : contains
+    Supplier ||--o{ Product : supplies
+    Supplier ||--o{ PurchaseOrder : receives
+    Product ||--o{ StockMovement : has
+    Product ||--o{ SaleItem : sold_in
+    Product ||--o{ PurchaseOrderItem : ordered_in
+    Product ||--|| ForecastResult : forecast
+    Sale ||--o{ SaleItem : contains
+    PurchaseOrder ||--o{ PurchaseOrderItem : contains
+
+    CustomUser {
+        string username
+        string role
+        string phone
+    }
+    Category {
+        string name
+        string description
+    }
+    Supplier {
+        string name
+        string contact
+    }
+    Product {
+        string name
+        string barcode
+        decimal purchase_price
+        decimal selling_price
+        int current_stock
+    }
+    StockMovement {
+        string movement_type
+        int quantity
+        datetime created_at
+    }
+    Sale {
+        string invoice_number
+        decimal total_amount
+        datetime created_at
+    }
+    SaleItem {
+        int quantity
+        decimal unit_price
+    }
+    PurchaseOrder {
+        string po_number
+        decimal total_amount
+        datetime created_at
+    }
+    PurchaseOrderItem {
+        int quantity_ordered
+        decimal unit_cost
+    }
+    ChatHistory {
+        string session_id
+        string role
+        string message
+    }
+    ForecastResult {
+        int recommended_reorder
+        string model_used
+        float mae
+    }
+```
+
+Save the rendered diagram as ERD.png and place it in the same directory as the documentation for a complete reference.

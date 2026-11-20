@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Suppliers{% endblock %}
+{% block page_title %}Suppliers{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <span style="color:var(--ss-muted)">{{ suppliers.count }} active suppliers</span>
+  {% if user.is_manager %}
+  <a href="{% url 'supplier-create' %}" class="btn-ss-primary btn">
+    <i class="bi bi-plus-circle me-1"></i>Add Supplier
+  </a>
+  {% endif %}
+</div>
+
+<div class="ss-card p-0">
+  <table class="ss-table">
+    <thead>
+      <tr><th>Name</th><th>Contact</th><th>City</th><th>Email</th><th>Products</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for s in suppliers %}
+      <tr>
+        <td style="font-weight:600">{{ s.name }}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:.82rem">{{ s.contact }}</td>
+        <td style="font-size:.85rem">{{ s.city|default:"—" }}</td>
+        <td style="font-size:.82rem;color:var(--ss-muted)">{{ s.email|default:"—" }}</td>
+        <td>
+          <span class="badge badge-ok rounded-pill">{{ s.product_set.count }}</span>
+        </td>
+        <td>
+          {% if user.is_manager %}
+          <a href="{% url 'supplier-update' s.pk %}" class="btn btn-sm"
+             style="background:rgba(245,158,11,.1);color:#f59e0b;border:none;padding:.2rem .5rem">
+            <i class="bi bi-pencil"></i>
+          </a>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center py-4" style="color:var(--ss-muted)">No suppliers yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

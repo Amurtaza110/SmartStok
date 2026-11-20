@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Delete Product{% endblock %}
+{% block page_title %}Delete Product{% endblock %}
+
+{% block content %}
+<div style="max-width:480px">
+  <div class="ss-card">
+    <div class="text-center mb-4">
+      <i class="bi bi-exclamation-triangle fs-1" style="color:#ef4444"></i>
+    </div>
+    <h5 class="mb-2" style="font-family:'Syne',sans-serif">Deactivate Product?</h5>
+    <p style="color:var(--ss-muted);font-size:.875rem">
+      Are you sure you want to deactivate <strong>{{ object.name }}</strong>?
+      The product will be hidden but all sales history will be preserved.
+    </p>
+    <div class="d-flex gap-2 mt-4">
+      <form method="post" class="flex-grow-1">
+        {% csrf_token %}
+        <button type="submit" class="btn w-100"
+          style="background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)">
+          <i class="bi bi-trash3 me-1"></i>Yes, Deactivate
+        </button>
+      </form>
+      <a href="{% url 'product-detail' object.pk %}" class="btn flex-grow-1"
+         style="background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text)">
+        Cancel
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
