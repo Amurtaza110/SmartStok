@@ -1,14 +1,19 @@
-# SmartStock — Inventory and AI Services
-## Setup Guide
+# SmartStock — Inventory and AI System
+## Complete Setup & Deployment Guide
 
-## Recommended: Docker Compose
+## 🚀 Quick Start (Local Development)
 
 1. Copy `.env.example` to `.env`.
-2. Set unique random values for `SECRET_KEY`, `AI_SERVICE_TOKEN`, and `INVENTORY_SERVICE_TOKEN`.
-3. Run `docker compose up --build`.
-4. Create an administrator with `docker compose exec inventory python manage.py createsuperuser`.
-
-Open the application at http://localhost:8000. Compose starts the Django inventory service and the independent AI service. Django uses SQLite in a persistent Docker volume; no database server is installed. For service boundaries and API contracts, see [MICROSERVICES.md](./MICROSERVICES.md).
+2. Activate your virtual environment and run:
+   ```bash
+   pip install -r requirements.txt
+   python manage.py migrate
+   python manage.py runserver
+   ```
+3. Open http://localhost:8000 and log in with demo credentials:
+   - **Admin**: `admin` / `admin123`
+   - **Manager**: `manager` / `manager123`
+   - **Cashier**: `cashier` / `cashier123`
 
 ---
 
@@ -19,51 +24,42 @@ smartstock/
 ├── manage.py
 ├── requirements.txt
 ├── .env.example
-├── logs/
+├── db.sqlite3               # Bundled database with demo data
+├── vercel.json              # Vercel deployment configuration
+├── build_files.sh           # Vercel build script
+│
+├── api/
+│   └── index.py             # Vercel Serverless Function entrypoint
 │
 ├── smartstock/              # Django project config
-│   ├── settings.py
-│   ├── urls.py
-│   └── wsgi.py
+│   ├── settings.py          # Unified Django settings (SQLite, WhiteNoise, Vercel)
+│   ├── urls.py              # Main URL routing
+│   └── wsgi.py              # WSGI entrypoint with app callable
 │
 ├── inventory/               # Core inventory app
-│   ├── models.py            # Database models
-│   ├── views.py             # Class-Based Views (CBVs)
+│   ├── models.py            # Database models (CustomUser, Product, Sale, etc.)
+│   ├── views.py             # Class-Based Views (Dashboard, POS, Sales, Reports)
 │   ├── urls.py              # URL routing
 │   ├── forms.py             # Django forms
-│   ├── admin.py             # Django Admin customization
-│   └── internal_api.py      # Token-protected AI data endpoints
+│   └── admin.py             # Django Admin customization
 │
-├── ai_assistant/            # AI features app
+├── ai_assistant/            # AI features app (Direct in-process)
 │   ├── views.py             # Chatbot, Forecast, Search views
 │   ├── urls.py
 │   └── services/
-│       └── ai_service_client.py # HTTP client for the independent AI service
-├── ai_service/              # Independent FastAPI service
-│   └── app.py               # Chat, semantic search, forecasting APIs
+│       ├── forecasting.py   # Demand forecasting & reorder calculation
+│       ├── ollama_service.py# Ollama RAG integration & context builder
+│       └── semantic_search.py# Semantic search & keyword fallback
 │
-├── templates/
+├── templates/               # Responsive Bootstrap 5 HTML templates
 │   ├── base.html            # Master layout with sidebar
-│   ├── registration/
-│   │   └── login.html
-│   ├── inventory/
-│   │   ├── dashboard.html
-│   │   ├── product_list.html
-│   │   ├── product_detail.html  # Includes forecast chart
-│   │   ├── product_form.html
-│   │   ├── pos.html             # Point of Sale
-│   │   ├── sale_list.html
-│   │   └── stock_adjustment.html
-│   └── ai_assistant/
-│       ├── chatbot.html         # AI Chat interface
-│       ├── semantic_search.html # Smart Search
-│       └── forecast_dashboard.html
+│   ├── registration/        # Login and registration templates
+│   ├── inventory/           # Dashboard, POS, products, sales templates
+│   └── ai_assistant/        # Chatbot, forecasting, search templates
 │
-└── static/
+└── static/                  # CSS, JS, and UI assets
     ├── css/
     └── js/
-Dockerfile                   # Django inventory service image
-docker-compose.yml           # Local multi-service deployment
 ```
 
 ---
@@ -75,14 +71,14 @@ docker-compose.yml           # Local multi-service deployment
 python --version   # Must be 3.10+
 ```
 
-The project uses SQLite, which Django creates automatically when you run migrations.
+The project uses SQLite, which is fully self-contained and pre-seeded in `db.sqlite3`.
 
 ---
 
 ## ⚙️ STEP 2 — PYTHON SETUP
 
 ```bash
-# Clone / extract project
+# Clone / navigate to project
 cd smartstock
 
 # Create virtual environment
@@ -92,13 +88,11 @@ source venv/bin/activate      # Linux/Mac
 
 # Install dependencies
 pip install -r requirements.txt
-pip install -r ai_service/requirements.txt
 ```
 
 ### Create .env file
 ```bash
 cp .env.example .env
-# Set the secret key and service tokens
 ```
 
 ---
@@ -106,44 +100,36 @@ cp .env.example .env
 ## ⚙️ STEP 3 — DJANGO SETUP
 
 ```bash
-# Run migrations
+# Run migrations (bundled db.sqlite3 is included)
 python manage.py migrate
-
-# Create admin user
-python manage.py createsuperuser
 
 # Collect static files
 python manage.py collectstatic --noinput
 
-# Start Django (AI service must run separately)
+# Run initial demand forecasts
+python manage.py run_forecasts
+
+# Start Django development server
 python manage.py runserver
 ```
-
-In a second terminal, start the AI service:
-
-```powershell
-uvicorn ai_service.app:app --host 127.0.0.1 --port 8001
-```
-
-After importing an existing database, run `python manage.py migrate_ai_data` while the AI service is online to copy legacy chat and forecast data into its own database.
 
 Open: http://127.0.0.1:8000
 Admin: http://127.0.0.1:8000/admin
 
 ---
 
-## 🌐 HOSTING WITH SQLITE
+## 🌐 PUBLIC DEPLOYMENT ON VERCEL
 
-This project intentionally uses a local SQLite file and does not connect to an
-external database. Vercel Functions have an ephemeral, non-shared filesystem,
-so SQLite data would not be reliably writable or persistent there. Deploy with
-Docker Compose on a host that provides persistent disk storage instead.
+This project is configured for seamless deployment on Vercel:
 
-The inventory application can run without the AI service. Chat, semantic search,
-and AI forecasts require deploying `ai_service` separately with a reachable
-Ollama instance, then setting `AI_SERVICE_URL`, `AI_SERVICE_TOKEN`, and
-`INVENTORY_SERVICE_TOKEN` in both services. The AI service's bundled SQLite
-database is not persistent hosting storage.
+1. Push your repository to GitHub:
+   ```bash
+   git push origin main
+   ```
+2. In your [Vercel Dashboard](https://vercel.com/dashboard), click **Add New Project** and import the `SmartStock` repository.
+3. Deploy! Vercel uses `vercel.json` and `smartstock/wsgi.py`.
+4. In Vercel serverless execution, the bundled `db.sqlite3` is copied into `/tmp/db.sqlite3`, making it fully readable and writable for sessions, POS checkouts, inventory updates, and reports.
+5. Static files are served directly and efficiently through WhiteNoise.
 
 ---
 

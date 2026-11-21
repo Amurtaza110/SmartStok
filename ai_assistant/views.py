@@ -1,8 +1,8 @@
 """
 ai_assistant/views.py
 ======================
-Views for:
-1. AI Chatbot (Ollama-powered)
+Direct in-process views for:
+1. AI Chatbot (Ollama-powered with context-aware fallback)
 2. Demand Forecasting
 3. Semantic Search
 """
@@ -12,12 +12,24 @@ import uuid
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404
-from django.utils.dateparse import parse_datetime
 from django.views import View
 from django.views.generic import TemplateView
 
-from inventory.models import Product
-from .services.ai_service_client import AIServiceError, request_ai_service
+from inventory.models import ChatHistory, ForecastResult, Product
+from .services.forecasting import (
+    forecast_product_demand,
+    run_forecast_and_save,
+    run_all_forecasts,
+)
+from .services.ollama_service import (
+    is_ollama_running,
+    get_available_models,
+    chat_with_ollama,
+)
+from .services.semantic_search import (
+    semantic_search,
+    reindex_all_products,
+)
 
 
 # ─────────────────────────────────────────────
@@ -27,45 +39,36 @@ from .services.ai_service_client import AIServiceError, request_ai_service
 class ChatbotView(LoginRequiredMixin, TemplateView):
     """
     Main chatbot interface.
-    Renders the chat UI. All messages are sent via AJAX to ChatAPIView.
+    Renders the chat UI with conversation history.
     """
     template_name = 'ai_assistant/chatbot.html'
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
 
-        # Get or create session ID for this browser session
         if 'chat_session_id' not in self.request.session:
             self.request.session['chat_session_id'] = str(uuid.uuid4())
         session_id = self.request.session['chat_session_id']
 
         ctx['session_id'] = session_id
-        try:
-            health = request_ai_service('GET', '/health', timeout=3)
-            ctx['ai_service_running'] = True
-            history = request_ai_service(
-                'GET',
-                f'/v1/chat/history/{session_id}',
-                params={'user_id': self.request.user.pk},
-                timeout=5,
-            )
-            for record in history:
-                record['created_at'] = parse_datetime(record['created_at'])
-            ctx['chat_history'] = history
-        except AIServiceError:
-            health = {}
-            ctx['ai_service_running'] = False
-            ctx['chat_history'] = []
-        ctx['ollama_running'] = health.get('ollama_running', False)
-        ctx['available_models'] = health.get('models', [])
+        ctx['ai_service_running'] = True
+        ctx['ollama_running'] = is_ollama_running()
+        ctx['available_models'] = get_available_models() if ctx['ollama_running'] else []
 
+        history = list(
+            ChatHistory.objects.filter(
+                user=self.request.user,
+                session_id=session_id
+            ).order_by('created_at')
+        )
+        ctx['chat_history'] = history
         return ctx
 
 
 class ChatAPIView(LoginRequiredMixin, View):
     """
     AJAX endpoint: POST a message, get AI response.
-    Saves conversation to ChatHistory for context.
+    Saves conversation to ChatHistory.
     """
 
     def post(self, request):
@@ -86,30 +89,50 @@ class ChatAPIView(LoginRequiredMixin, View):
             if session_id != request.session.get('chat_session_id'):
                 return JsonResponse({'success': False, 'error': 'Invalid chat session'}, status=403)
 
-            result = request_ai_service(
-                'POST',
-                '/v1/chat',
-                payload={
-                    'message': user_message,
-                    'user_id': request.user.pk,
-                    'session_id': session_id,
-                },
+            # Record user message
+            ChatHistory.objects.create(
+                user=request.user,
+                session_id=session_id,
+                role='user',
+                message=user_message,
             )
+
+            # Retrieve recent conversation history
+            recent_history = list(
+                ChatHistory.objects.filter(
+                    user=request.user,
+                    session_id=session_id
+                ).order_by('-created_at')[:10]
+            )
+            recent_history.reverse()
+
+            history_payload = [
+                {'role': item.role, 'message': item.message}
+                for item in recent_history
+            ]
+
+            result = chat_with_ollama(user_message, history_payload)
+
+            # Record assistant response
+            if result.get('response'):
+                ChatHistory.objects.create(
+                    user=request.user,
+                    session_id=session_id,
+                    role='assistant',
+                    message=result['response'],
+                )
 
             return JsonResponse({
                 'success': True,
-                'response': result['response'],
-                'error': None,
-                'model': result['model'],
+                'response': result.get('response', ''),
+                'error': result.get('error'),
+                'model': result.get('model', 'SmartStock AI'),
             })
 
         except json.JSONDecodeError:
-            return JsonResponse({'success': False, 'error': 'Invalid JSON'})
-        except AIServiceError as e:
-            return JsonResponse(
-                {'success': False, 'error': e.message},
-                status=e.status_code if 400 <= e.status_code < 600 else 503,
-            )
+            return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
+        except Exception as exc:
+            return JsonResponse({'success': False, 'error': str(exc)}, status=500)
 
 
 class ClearChatView(LoginRequiredMixin, View):
@@ -118,18 +141,7 @@ class ClearChatView(LoginRequiredMixin, View):
     def post(self, request):
         session_id = request.session.get('chat_session_id', '')
         if session_id:
-            try:
-                request_ai_service(
-                    'DELETE',
-                    f'/v1/chat/history/{session_id}',
-                    params={'user_id': request.user.pk},
-                    timeout=5,
-                )
-            except AIServiceError as e:
-                return JsonResponse(
-                    {'success': False, 'error': e.message},
-                    status=e.status_code if 400 <= e.status_code < 600 else 503,
-                )
+            ChatHistory.objects.filter(user=request.user, session_id=session_id).delete()
             request.session['chat_session_id'] = str(uuid.uuid4())
         return JsonResponse({'success': True})
 
@@ -145,38 +157,34 @@ class ForecastView(LoginRequiredMixin, View):
     """
 
     def get(self, request, product_id):
-        """Return the AI service's cached or freshly computed forecast."""
         product = get_object_or_404(Product, id=product_id, is_active=True)
-        try:
-            result = request_ai_service('GET', f'/v1/forecast/{product_id}')
-        except AIServiceError as e:
-            return JsonResponse(
-                {'success': False, 'product_name': product.name, 'error': e.message},
-                status=e.status_code if 400 <= e.status_code < 600 else 503,
-            )
+        fc = ForecastResult.objects.filter(product=product).first()
+        if not fc:
+            result = run_forecast_and_save(product_id)
+            if not result['success']:
+                return JsonResponse({
+                    'success': False,
+                    'product_name': product.name,
+                    'error': result.get('error', 'Forecast generation failed'),
+                }, status=400)
+            fc = ForecastResult.objects.filter(product=product).first()
+
         return JsonResponse({
-            'success': result['success'],
+            'success': True,
             'product_name': product.name,
-            'dates': result['dates'],
-            'values': result['values'],
-            'recommended_reorder': result['recommended_reorder'],
-            'model': result['model'],
-            'mae': result.get('mae'),
-            'cached': result['cached'],
+            'dates': fc.get_dates(),
+            'values': fc.get_values(),
+            'recommended_reorder': fc.recommended_reorder,
+            'model': fc.model_used,
+            'mae': fc.mae,
+            'cached': True,
         })
 
     def post(self, request, product_id):
-        """Force refresh forecast in the AI service."""
         product = get_object_or_404(Product, id=product_id, is_active=True)
-        try:
-            result = request_ai_service('POST', f'/v1/forecast/{product_id}')
-        except AIServiceError as e:
-            return JsonResponse(
-                {'success': False, 'error': e.message},
-                status=e.status_code if 400 <= e.status_code < 600 else 503,
-            )
-        product.last_reorder_qty = result['recommended_reorder']
-        product.save(update_fields=['last_reorder_qty'])
+        result = run_forecast_and_save(product_id)
+        if not result['success']:
+            return JsonResponse({'success': False, 'error': result.get('error')}, status=400)
         return JsonResponse({'success': True, 'product_id': product_id})
 
 
@@ -188,64 +196,26 @@ class ForecastDashboardView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        from types import SimpleNamespace
+        forecasts = list(
+            ForecastResult.objects.filter(product__is_active=True)
+            .select_related('product', 'product__category')
+            .order_by('-generated_at')[:30]
+        )
+        forecast_product_ids = {f.product_id for f in forecasts}
+        unforecasted = Product.objects.filter(is_active=True).exclude(id__in=forecast_product_ids).count()
 
-        try:
-            records = request_ai_service('GET', '/v1/forecasts')
-        except AIServiceError as e:
-            ctx['forecasts'] = []
-            ctx['unforecasted'] = Product.objects.filter(is_active=True).count()
-            ctx['forecast_error'] = e.message
-            return ctx
-
-        product_ids = [record['product_id'] for record in records]
-        products = Product.objects.filter(
-            id__in=product_ids, is_active=True
-        ).select_related('category').in_bulk()
-        ctx['forecasts'] = [
-            SimpleNamespace(
-                product=products[record['product_id']],
-                recommended_reorder=record['recommended_reorder'],
-                model_used=record['model'],
-                mae=record['mae'],
-                generated_at=parse_datetime(record['generated_at']),
-                forecast_dates_json=json.dumps(record['dates']),
-                forecast_values_json=json.dumps(record['values']),
-            )
-            for record in records
-            if record['product_id'] in products
-        ][:30]
-        ctx['unforecasted'] = Product.objects.filter(
-            is_active=True
-        ).exclude(id__in=products.keys()).count()
-
+        ctx['forecasts'] = forecasts
+        ctx['unforecasted'] = unforecasted
+        ctx['forecast_error'] = None
         return ctx
 
 
 class RunAllForecastsView(LoginRequiredMixin, View):
+    """Compute demand forecasts for all active products."""
+
     def post(self, request):
-        product_ids = list(Product.objects.filter(is_active=True).values_list('id', flat=True))
-        try:
-            result = request_ai_service(
-                'POST',
-                '/v1/forecasts',
-                payload={'product_ids': product_ids},
-                timeout=300,
-            )
-        except AIServiceError as e:
-            return JsonResponse(
-                {'success': False, 'error': e.message},
-                status=e.status_code if 400 <= e.status_code < 600 else 503,
-            )
-        products_by_id = Product.objects.in_bulk(
-            forecast['product_id'] for forecast in result['forecasts']
-        )
-        for forecast in result['forecasts']:
-            product = products_by_id.get(forecast['product_id'])
-            if product:
-                product.last_reorder_qty = forecast['recommended_reorder']
-        Product.objects.bulk_update(products_by_id.values(), ['last_reorder_qty'])
-        return JsonResponse(result)
+        result = run_all_forecasts()
+        return JsonResponse({'success': True, **result})
 
 
 # ─────────────────────────────────────────────
@@ -265,34 +235,10 @@ class SemanticSearchView(LoginRequiredMixin, View):
         ajax = request.GET.get('ajax', '')
 
         if query:
-            try:
-                response = request_ai_service(
-                    'GET', '/v1/search', params={'q': query, 'limit': 12}
-                )
-            except AIServiceError as e:
-                if ajax:
-                    return JsonResponse({'error': e.message}, status=e.status_code)
-                return render(request, self.template_name, {
-                    'query': query,
-                    'results': [],
-                    'error': e.message,
-                })
-            product_ids = [item['id'] for item in response['results']]
-            products_by_id = Product.objects.filter(
-                id__in=product_ids, is_active=True
-            ).select_related('category').in_bulk()
-            results = []
-            scores = {item['id']: item['score'] for item in response['results']}
-            for product_id in product_ids:
-                product = products_by_id.get(product_id)
-                if product:
-                    product.similarity_score = scores[product_id]
-                    results.append(product)
+            results = semantic_search(query, top_k=12)
             if ajax:
-                # Return JSON for AJAX requests
-                data = []
-                for p in results:
-                    data.append({
+                data = [
+                    {
                         'id': p.id,
                         'name': p.name,
                         'generic_name': p.generic_name,
@@ -300,9 +246,11 @@ class SemanticSearchView(LoginRequiredMixin, View):
                         'current_stock': p.current_stock,
                         'selling_price': float(p.selling_price),
                         'is_low_stock': p.is_low_stock,
-                        'similarity_score': p.similarity_score,
+                        'similarity_score': getattr(p, 'similarity_score', None),
                         'url': f'/products/{p.id}/',
-                    })
+                    }
+                    for p in results
+                ]
                 return JsonResponse({'results': data, 'query': query, 'count': len(data)})
         else:
             results = []
@@ -314,19 +262,13 @@ class SemanticSearchView(LoginRequiredMixin, View):
 
 
 class ReindexProductsView(LoginRequiredMixin, View):
-    """
-    Admin utility: re-generate embeddings for all products.
-    Only accessible by Admin/Manager.
-    """
+    """Admin utility: re-generate embeddings for all active products."""
 
     def post(self, request):
         if not request.user.is_manager:
             return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
 
-        try:
-            count = request_ai_service('POST', '/v1/reindex')['count']
-        except AIServiceError as e:
-            return JsonResponse({'success': False, 'error': e.message}, status=e.status_code)
+        count = reindex_all_products()
         return JsonResponse({
             'success': True,
             'message': f'Successfully indexed {count} products.',
@@ -339,29 +281,23 @@ class ReindexProductsView(LoginRequiredMixin, View):
 # ─────────────────────────────────────────────
 
 class AIStatusView(LoginRequiredMixin, View):
-    """Returns status of all AI components (for dashboard widget)."""
+    """Returns status of AI components (for dashboard widget)."""
 
     def get(self, request):
-        try:
-            health = request_ai_service('GET', '/health', timeout=3)
-            ai_service_ok = True
-            ai_service_error = None
-        except AIServiceError as e:
-            ai_service_ok = False
-            ai_service_error = e.message
-
+        ollama_ok = is_ollama_running()
         total = Product.objects.filter(is_active=True).count()
+        indexed = Product.objects.filter(is_active=True).exclude(embedding_json__isnull=True).exclude(embedding_json='').count()
 
         return JsonResponse({
-            'ai_service': {'running': ai_service_ok, 'error': ai_service_error},
+            'ai_service': {'running': True, 'error': None},
             'ollama': {
-                'running': health.get('ollama_running', False) if ai_service_ok else False,
-                'models': health.get('models', []) if ai_service_ok else [],
+                'running': ollama_ok,
+                'models': get_available_models() if ollama_ok else [],
             },
             'semantic_search': {
-                'available': ai_service_ok,
-                'indexed_products': None,
+                'available': True,
+                'indexed_products': indexed,
                 'total_products': total,
             },
-            'forecasting': {'available': ai_service_ok},
+            'forecasting': {'available': True},
         })

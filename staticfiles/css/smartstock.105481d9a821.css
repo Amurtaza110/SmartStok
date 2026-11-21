@@ -1,0 +1,152 @@
+/*
+ * SmartStock Custom CSS
+ * Extends base.html variables for extra components
+ */
+
+/* ── Form Controls ──────────────────────────── */
+.form-control,
+.form-select {
+  background: rgba(255,255,255,.05) !important;
+  border-color: var(--ss-border) !important;
+  color: var(--ss-text) !important;
+  border-radius: 8px;
+  font-size: .875rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+.form-control:focus,
+.form-select:focus {
+  border-color: rgba(0,212,255,.5) !important;
+  box-shadow: 0 0 0 3px rgba(0,212,255,.1) !important;
+  background: rgba(0,212,255,.04) !important;
+}
+.form-control::placeholder { color: var(--ss-muted) !important; }
+
+/* Crispy form labels */
+label { font-size: .82rem; color: #94a3b8; margin-bottom: .3rem; }
+
+/* ── Buttons ────────────────────────────────── */
+.btn-primary {
+  background: var(--ss-accent) !important;
+  border-color: var(--ss-accent) !important;
+  color: #0a0f1e !important; font-weight: 600;
+}
+.btn-secondary {
+  background: var(--ss-surface) !important;
+  border-color: var(--ss-border) !important;
+  color: var(--ss-text) !important;
+}
+.btn:focus { box-shadow: none !important; }
+
+/* ── Alerts ────────────────────────────────── */
+.alert-success {
+  background: rgba(16,185,129,.1) !important;
+  border-color: rgba(16,185,129,.3) !important;
+  color: #34d399 !important;
+}
+.alert-warning {
+  background: rgba(245,158,11,.1) !important;
+  border-color: rgba(245,158,11,.3) !important;
+  color: #fbbf24 !important;
+}
+.alert-danger {
+  background: rgba(239,68,68,.1) !important;
+  border-color: rgba(239,68,68,.3) !important;
+  color: #f87171 !important;
+}
+.alert-info {
+  background: rgba(0,212,255,.08) !important;
+  border-color: rgba(0,212,255,.25) !important;
+  color: #7dd3fc !important;
+}
+
+/* ── Modal ──────────────────────────────────── */
+.modal-content {
+  background: var(--ss-surface) !important;
+  border-color: var(--ss-border) !important;
+  border-radius: 16px;
+}
+.modal-header { border-color: var(--ss-border) !important; }
+.modal-footer { border-color: var(--ss-border) !important; }
+
+/* ── Pagination ─────────────────────────────── */
+.page-link {
+  background: var(--ss-surface) !important;
+  border-color: var(--ss-border) !important;
+  color: var(--ss-text) !important;
+}
+.page-link:hover { color: var(--ss-accent) !important; }
+.page-item.active .page-link {
+  background: var(--ss-accent) !important;
+  border-color: var(--ss-accent) !important;
+  color: #0a0f1e !important;
+}
+
+/* ── Shared dashboard and navigation polish ─────────── */
+.dashboard-heading {
+  min-height: 112px;
+  padding: clamp(1.1rem, 2.5vw, 1.75rem);
+  border: 1px solid var(--ss-border);
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse at 92% 10%, rgba(0,212,255,.12), transparent 36%),
+    linear-gradient(120deg, rgba(17,24,39,.96), rgba(17,24,39,.78));
+}
+.eyebrow {
+  color: var(--ss-accent);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  margin-bottom: .35rem;
+}
+.dashboard-title {
+  font: 700 clamp(1.25rem, 2.5vw, 1.75rem)/1.2 'Syne', sans-serif;
+}
+.dashboard-subtitle, .dashboard-date { color: var(--ss-muted); font-size: .82rem; }
+.dashboard-date {
+  white-space: nowrap;
+  padding: .55rem .75rem;
+  border: 1px solid var(--ss-border);
+  border-radius: 8px;
+  background: rgba(255,255,255,.025);
+}
+.chart-empty {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .6rem;
+  color: var(--ss-muted);
+  font-size: .82rem;
+  text-align: center;
+}
+.chart-empty i { color: #3b506b; font-size: 1.5rem; }
+.sidebar-link.active { font-weight: 600; }
+.ss-table th { white-space: nowrap; }
+.ss-table tbody tr { transition: background-color .15s ease; }
+.form-control:focus, .form-select:focus {
+  border-color: rgba(0,212,255,.65) !important;
+}
+
+@media (max-width: 575.98px) {
+  .dashboard-heading > div:last-child { width: 100%; }
+  .dashboard-date { flex: 1; }
+  .kpi-value { font-size: 1.4rem; }
+}
+
+/* ── Utility ────────────────────────────────── */
+.fw-600 { font-weight: 600 !important; }
+.fw-700 { font-weight: 700 !important; }
+.text-accent { color: var(--ss-accent) !important; }
+.text-muted-ss { color: var(--ss-muted) !important; }
+.font-mono { font-family: 'DM Mono', monospace !important; }
+.font-syne  { font-family: 'Syne', sans-serif !important; }
+
+/* ── Print styles (for receipts) ───────────── */
+@media print {
+  #sidebar, .topbar, .btn, nav { display: none !important; }
+  #main-content { margin-left: 0 !important; }
+  body { background: #fff !important; color: #000 !important; }
+  .ss-card { border: 1px solid #ccc !important; background: #fff !important; }
+}

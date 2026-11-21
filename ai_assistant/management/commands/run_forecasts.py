@@ -1,13 +1,14 @@
-"""Run forecasts by calling the AI service for live sales data."""
+"""Run forecasts and semantic indexing directly."""
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from inventory.models import Product
-from ai_assistant.services.ai_service_client import AIServiceError, request_ai_service
+from ai_assistant.services.forecasting import run_forecast_and_save, run_all_forecasts
+from ai_assistant.services.semantic_search import reindex_all_products
 
 
 class Command(BaseCommand):
-    help = 'Generate AI demand forecasts for all active products'
+    help = 'Generate AI demand forecasts for active products'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -28,40 +29,25 @@ class Command(BaseCommand):
         # ── Semantic Search Reindex ──
         if options['reindex']:
             self.stdout.write('📦 Reindexing product embeddings for semantic search…')
-            try:
-                count = request_ai_service('POST', '/v1/reindex')['count']
-            except AIServiceError as exc:
-                raise CommandError(exc.message) from exc
+            count = reindex_all_products()
             self.stdout.write(self.style.SUCCESS(f'   ✅ Indexed {count} products'))
 
         # ── Forecasting ──
-        products = Product.objects.filter(is_active=True)
         if options['product'] is not None:
-            products = products.filter(pk=options['product'])
-        if not products.exists():
-            raise CommandError('No active products found for forecasting')
-
-        try:
-            result = request_ai_service(
-                'POST',
-                '/v1/forecasts',
-                payload={'product_ids': list(products.values_list('id', flat=True))},
-                timeout=300,
-            )
-        except AIServiceError as exc:
-            raise CommandError(exc.message) from exc
-
-        products_by_id = Product.objects.in_bulk(
-            forecast['product_id'] for forecast in result['forecasts']
-        )
-        for forecast in result['forecasts']:
-            product = products_by_id.get(forecast['product_id'])
-            if product:
-                product.last_reorder_qty = forecast['recommended_reorder']
-        Product.objects.bulk_update(products_by_id.values(), ['last_reorder_qty'])
-
-        elapsed = (timezone.now() - start).seconds
-        self.stdout.write(self.style.SUCCESS(
-            f'\nDone! Generated {result["generated"]}, skipped '
-            f'{result["skipped"]} without sales data in {elapsed}s.\n'
-        ))
+            product = Product.objects.filter(pk=options['product'], is_active=True).first()
+            if not product:
+                raise CommandError(f'Active product #{options["product"]} not found.')
+            result = run_forecast_and_save(product.id)
+            if not result['success']:
+                raise CommandError(result.get('error', 'Forecast failed'))
+            self.stdout.write(self.style.SUCCESS(
+                f'   ✅ Forecast generated for {product.name}: '
+                f'Reorder {result["recommended_reorder"]} units (Model: {result["model"]})'
+            ))
+        else:
+            result = run_all_forecasts()
+            elapsed = (timezone.now() - start).seconds
+            self.stdout.write(self.style.SUCCESS(
+                f'\nDone! Generated {result["generated"]}, skipped '
+                f'{result["skipped"]} without active data in {elapsed}s.\n'
+            ))
