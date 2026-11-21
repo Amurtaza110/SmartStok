@@ -149,6 +149,43 @@ Admin: http://127.0.0.1:8000/admin
 
 ---
 
+## 🌐 PUBLIC DEPLOYMENT ON VERCEL
+
+Vercel detects this Django project from `manage.py`, installs the root
+`requirements.txt`, and collects static files during the build. Do not set a
+custom output directory or build command.
+
+1. Import the GitHub repository into Vercel and select the repository root.
+2. Create a persistent PostgreSQL database with a provider such as Neon or
+   Supabase. Add its PostgreSQL connection string as the sensitive
+   `DATABASE_URL` environment variable in Vercel for both Preview and Production.
+3. Add a unique `SECRET_KEY` and set `DEBUG=False`. Vercel deployment hostnames
+   are added automatically. For a custom domain, also set `ALLOWED_HOSTS` to its
+   hostname and `CSRF_TRUSTED_ORIGINS` to its HTTPS origin, for example
+   `https://stock.example.com`.
+4. Deploy. Set the same Vercel environment variables as the target environment,
+   then run database migrations once for that database:
+
+   ```bash
+   vercel env run -- python manage.py migrate --noinput
+   ```
+
+   This requires the repository to be linked locally with the Vercel CLI and
+   the CLI to be authenticated. Do not run migrations as part of the build.
+5. Create the first administrator against the same database:
+
+   ```bash
+   vercel env run -- python manage.py createsuperuser
+   ```
+
+The inventory application can run without the AI service. Chat, semantic search,
+and AI forecasts require deploying `ai_service` separately with a reachable
+Ollama instance, then setting `AI_SERVICE_URL`, `AI_SERVICE_TOKEN`, and
+`INVENTORY_SERVICE_TOKEN` in both services. The AI service's bundled SQLite
+database is not persistent hosting storage.
+
+---
+
 ## 🤖 STEP 4 — OLLAMA AI CHATBOT SETUP
 
 ### Install Ollama

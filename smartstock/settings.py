@@ -6,14 +6,52 @@ AI-Powered Inventory Management System
 
 import os
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
+
 from decouple import config
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ── Security ──────────────────────────────────────────────
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production-xyz123')
-DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='127.0.0.1,localhost').split(',')
+IS_VERCEL = bool(os.environ.get('VERCEL'))
+DEBUG = config('DEBUG', default=not IS_VERCEL, cast=bool)
+SECRET_KEY = config(
+    'SECRET_KEY',
+    default='django-insecure-change-this-in-production-xyz123' if DEBUG else '',
+)
+if not DEBUG and (
+    not SECRET_KEY
+    or SECRET_KEY.startswith('django-insecure-')
+    or SECRET_KEY.startswith('replace-with-')
+):
+    raise ImproperlyConfigured('Set a unique production SECRET_KEY.')
+
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in config('ALLOWED_HOSTS', default='127.0.0.1,localhost').split(',')
+    if host.strip()
+]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip().rstrip('/')
+    for origin in config('CSRF_TRUSTED_ORIGINS', default='').split(',')
+    if origin.strip()
+]
+for vercel_host_variable in ('VERCEL_URL', 'VERCEL_PROJECT_PRODUCTION_URL'):
+    vercel_host = os.environ.get(vercel_host_variable, '').strip()
+    if vercel_host:
+        parsed_host = urlparse(
+            vercel_host if '://' in vercel_host else f'https://{vercel_host}'
+        ).hostname
+        if parsed_host:
+            ALLOWED_HOSTS.append(parsed_host)
+            CSRF_TRUSTED_ORIGINS.append(f'https://{parsed_host}')
+ALLOWED_HOSTS = list(dict.fromkeys(ALLOWED_HOSTS))
+CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(CSRF_TRUSTED_ORIGINS))
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 # ── Installed Apps ─────────────────────────────────────────
 INSTALLED_APPS = [
@@ -68,10 +106,40 @@ WSGI_APPLICATION = 'smartstock.wsgi.application'
 
 # ── Database ───────────────────────────────────────────────
 # Use SQLite by default so the project runs locally without extra DB setup.
-# Set USE_SQLITE=False to switch back to PostgreSQL settings below.
+# Use DATABASE_URL for hosted PostgreSQL deployments.
 USE_SQLITE = config('USE_SQLITE', default=True, cast=bool)
+DATABASE_URL = config('DATABASE_URL', default='')
 
-if USE_SQLITE:
+if DATABASE_URL:
+    database_url = urlparse(DATABASE_URL)
+    if database_url.scheme not in ('postgres', 'postgresql') or not database_url.hostname:
+        raise ImproperlyConfigured('DATABASE_URL must be a PostgreSQL connection URL.')
+    database_name = unquote(database_url.path.lstrip('/'))
+    if not database_name:
+        raise ImproperlyConfigured('DATABASE_URL must include a database name.')
+    database_options = {}
+    sslmode = parse_qs(database_url.query).get('sslmode', [])
+    if sslmode:
+        database_options['sslmode'] = sslmode[-1]
+    elif IS_VERCEL:
+        database_options['sslmode'] = 'require'
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': database_name,
+            'USER': unquote(database_url.username or ''),
+            'PASSWORD': unquote(database_url.password or ''),
+            'HOST': database_url.hostname,
+            'PORT': database_url.port or '',
+            'OPTIONS': database_options,
+            'CONN_MAX_AGE': 0,
+        }
+    }
+elif IS_VERCEL:
+    raise ImproperlyConfigured(
+        'Configure a persistent PostgreSQL DATABASE_URL in the Vercel project settings.'
+    )
+elif USE_SQLITE:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -172,9 +240,18 @@ LOGGING = {
     },
     'loggers': {
         'ai_assistant': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console'],
             'level': 'DEBUG',
             'propagate': False,
         },
     },
 }
+if DEBUG:
+    logs_dir = BASE_DIR / 'logs'
+    logs_dir.mkdir(exist_ok=True)
+    LOGGING['handlers']['file'] = {
+        'class': 'logging.FileHandler',
+        'filename': logs_dir / 'smartstock.log',
+        'formatter': 'verbose',
+    }
+    LOGGING['loggers']['ai_assistant']['handlers'].append('file')
