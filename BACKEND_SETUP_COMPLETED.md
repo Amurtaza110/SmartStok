@@ -4,15 +4,12 @@
 
 ### 1. Prerequisites
 - [x] Python 3.10+ installed
-- [x] PostgreSQL installed and running
 - [x] Virtual environment created
-- [ ] Dependencies installed (in progress...)
-- [ ] Database created in PostgreSQL
+- [ ] Dependencies installed
 
 ### 2. Django Setup Steps
 ```bash
-# Step 1: Run migrations
-python manage.py makemigrations inventory
+# Step 1: Create/update the SQLite database schema
 python manage.py migrate
 
 # Step 2: Create superuser
@@ -29,13 +26,9 @@ python manage.py runserver
 ```
 
 ### 3. Database Setup
-The database will be created automatically when you run migrations.
-PostgreSQL configuration from `.env`:
-- Database: `smartstock`
-- User: `postgres`
-- Password: `password` (change in production)
-- Host: `localhost`
-- Port: `5432`
+The SQLite database file is created automatically when you run migrations. By
+default it is `db.sqlite3` in the project root; set `SQLITE_PATH` to use another
+writable location.
 
 ### 4. Key Endpoints After Setup
 - Admin: http://127.0.0.1:8000/admin/
@@ -71,6 +64,6 @@ PostgreSQL configuration from `.env`:
 - Forecast results are stored separately for reporting
 
 ## Troubleshooting
-- If migrations fail, check PostgreSQL is running: `psql -U postgres`
+- If migrations fail, check that the SQLite database directory is writable.
 - If Ollama fails to connect, ensure it's running on http://localhost:11434
 - Clear Django cache if templates don't update: `python manage.py clear_cache`
